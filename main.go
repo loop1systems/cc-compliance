@@ -25,12 +25,17 @@ type ComplianceResult struct {
 	NodeID      string `json:"NodeID"`
 	NodeCaption string `json:"NodeCaption"`
 	XMLResults  string `json:"XMLResults"`
+	RuleName    string `json:"RuleName"`
 }
 
 // Violation holds a single node/interface pair.
 type Violation struct {
-	NodeName      string
-	InterfaceName string
+	NodeName         string
+	RuleName         string
+	ConfigBlockMatch string
+	PatternText      string
+	InViolation      string
+	FoundLineNumber  string
 }
 
 func main() {
@@ -118,6 +123,7 @@ func getComplianceResults() ([]*ComplianceResult, error) {
 				NCM_Nodes.NodeID
 				, NCM_Nodes.NodeCaption
 				, CacheResults.XMLResults
+				, CacheResults.RuleName
 			FROM Cirrus.Nodes AS NCM_Nodes
 			INNER JOIN Cirrus.ConfigArchive AS ConfigArchive ON NCM_Nodes.NodeID = ConfigArchive.NodeID
 			INNER JOIN Cirrus.PolicyCacheResults AS CacheResults ON ConfigArchive.ConfigID = CacheResults.ConfigID
@@ -167,23 +173,42 @@ func getViolations(complianceResults []*ComplianceResult) ([]*Violation, error) 
 	var violations []*Violation
 
 	type ComplianceDetail struct {
-		Interfaces []struct {
-			InterfaceName string `xml:"L,attr"`
+		ConfigBlocks []struct {
+			ConfigBlockMatch string `xml:"L,attr"`
+			PatternBlock     struct {
+				Patterns []struct {
+					FoundMatch  string `xml:"FM,attr"`
+					PatternText string `xml:"PT,attr"`
+					FoundLine   struct {
+						FoundLineMatch  string `xml:"FL,attr"`
+						FoundLineNumber string `xml:"FLN,attr"`
+					} `xml:"L"`
+				} `xml:"P"`
+			} `xml:"Ps"`
 		} `xml:"CB"`
 	}
 
 	// iterate over all the device compliance results and then their interfaces
 	for _, c := range complianceResults {
-		var complianceDetails []ComplianceDetail
-		if err := xml.Unmarshal([]byte(c.XMLResults), &complianceDetails); err != nil {
+		var complianceDetail ComplianceDetail
+		if err := xml.Unmarshal([]byte(c.XMLResults), &complianceDetail); err != nil {
 			return nil, errors.Wrap(err, "failed to unmarshal")
 		}
 
-		for _, cd := range complianceDetails {
-			for _, id := range cd.Interfaces {
+		for _, configBlock := range complianceDetail.ConfigBlocks {
+			for _, pattern := range configBlock.PatternBlock.Patterns {
+				var foundLineNumber string
+				if pattern.FoundMatch == "True" {
+					foundLineNumber = pattern.FoundLine.FoundLineNumber
+				}
+
 				violations = append(violations, &Violation{
-					NodeName:      c.NodeCaption,
-					InterfaceName: id.InterfaceName,
+					NodeName:         c.NodeCaption,
+					RuleName:         c.RuleName,
+					ConfigBlockMatch: configBlock.ConfigBlockMatch,
+					PatternText:      pattern.PatternText,
+					InViolation:      pattern.FoundMatch,
+					FoundLineNumber:  foundLineNumber,
 				})
 			}
 		}
@@ -219,13 +244,21 @@ func writeViolations(violations []*Violation) error {
 	// write header row
 	csvWriter.Write([]string{
 		"Node Name",
-		"Interface Name",
+		"Rule Name",
+		"Config Block Match",
+		"Pattern Text",
+		"In Violation",
+		"Line Number",
 	})
 
 	for _, v := range violations {
 		row := []string{
 			v.NodeName,
-			v.InterfaceName,
+			v.RuleName,
+			v.ConfigBlockMatch,
+			v.PatternText,
+			v.InViolation,
+			v.FoundLineNumber,
 		}
 
 		if err := csvWriter.Write(row); err != nil {
