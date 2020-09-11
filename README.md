@@ -28,3 +28,19 @@ RouterB,GigabitEthernet 2/0/6
 ## Enhancements
 
 Add an option to report on this information historically.
+
+## Possible Other Formats
+
+```csv
+Node Name,Rule Name,Code Block,Pattern Name,Pattern,InViolation,LineNumber
+RouterA,ISE Imaging Port Detection,interface GigabitEthernet5/0/8,switchport access vlan,True,5184
+RouterA,ISE Imaging Port Detection,interface GigabitEthernet5/0/8,authentication event server dead action authorize vlan,False,
+RouterA,ISE Imaging Port Detection,interface GigabitEthernet5/0/8,authentication event fail action next-method,False,
+RouterA,ISE Imaging Port Detection,interface GigabitEthernet5/0/8,switchport mode trunk,False,
+RouterA,ISE Imaging Port Detection,interface GigabitEthernet5/0/8,switchport mode access,True,5185
+```
+
+## Features
+
+1. Accept rule name to filter down selection.
+2. Default to all rules if no rule is specified.
