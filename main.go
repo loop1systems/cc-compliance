@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"encoding/xml"
 	"fmt"
+	"io/ioutil"
 	"os"
 	"path/filepath"
 	"time"
@@ -35,6 +36,7 @@ type Violation struct {
 func main() {
 	// define the command-line options
 	pflag.BoolP("version", "v", false, "print version")
+	pflag.StringP("file", "f", "", "input JSON file")
 	pflag.Parse()
 
 	// bind the command-line options
@@ -53,39 +55,18 @@ func main() {
 		QuoteEmptyFields: true,
 	})
 
-	hostname := os.Getenv("solarwinds_hostname")
-	username := os.Getenv("solarwinds_username")
-	password := os.Getenv("solarwinds_password")
-
-	if hostname == "" {
-		fmt.Fprintln(os.Stderr, "You must provide a hostname (env: solarwinds_hostname)")
-		os.Exit(1)
-	}
-
-	if username == "" {
-		fmt.Fprintln(os.Stderr, "You must provide a username (env: solarwinds_username)")
-		os.Exit(1)
-	}
-
-	if password == "" {
-		fmt.Fprintln(os.Stderr, "You must provide a password (env: solarwinds_password)")
-		os.Exit(1)
-	}
-
-	client := gosolar.NewClient(hostname, username, password, true)
-
-	if err := process(client); err != nil {
+	if err := process(); err != nil {
 		log.Fatal(err)
 	}
 }
 
-func process(client *gosolar.Client) error {
-	complianceResults, err := getComplianceResults(client)
+func process() error {
+	complianceResults, err := getComplianceResults()
 	if err != nil {
 		return errors.Wrap(err, "failed to get compliance results")
 	}
 
-	violations, err := getViolations(client, complianceResults)
+	violations, err := getViolations(complianceResults)
 	if err != nil {
 		return errors.Wrap(err, "failed to get violations")
 	}
@@ -99,52 +80,79 @@ func process(client *gosolar.Client) error {
 	return nil
 }
 
-func getComplianceResults(client *gosolar.Client) ([]*ComplianceResult, error) {
-	// TODO: replace this sample file with an actual call to SolarWinds
-	// content, err := ioutil.ReadFile("sample_output.json")
-	// if err != nil {
-	// 	return nil, errors.Wrap(err, "could not open file")
-	// }
+func getComplianceResults() ([]*ComplianceResult, error) {
+	inputFileName := viper.GetString("file")
 
-	query := `
-		SELECT DISTINCT
-			NCM_Nodes.NodeID
-			, NCM_Nodes.NodeCaption
-			, CacheResults.XMLResults
-		FROM Cirrus.Nodes AS NCM_Nodes
-		INNER JOIN Cirrus.ConfigArchive AS ConfigArchive ON NCM_Nodes.NodeID = ConfigArchive.NodeID
-		INNER JOIN Cirrus.PolicyCacheResults AS CacheResults ON ConfigArchive.ConfigID = CacheResults.ConfigID
-		INNER JOIN (
-			SELECT
-				ConfigArchive.NodeID
-				, MAX(ConfigArchive.DownloadTime) AS MostRecentDownload
-			FROM Cirrus.ConfigArchive AS ConfigArchive
-			WHERE ConfigArchive.ConfigType = 'Running'
-			GROUP BY ConfigArchive.NodeID
-		) tbl1 ON ConfigArchive.NodeID = tbl1.NodeID AND ConfigArchive.DownloadTime = tbl1.MostRecentDownload
-		WHERE NCM_Nodes.MachineType LIKE '%36xx%'
-		AND CacheResults.RuleID = '751cc709-e49c-40fe-9638-0af1627f0499'
-		AND CacheResults.IsViolation = 'True'
-	`
+	var content []byte
+	if inputFileName != "" {
+		var err error
+		content, err = ioutil.ReadFile(inputFileName)
+		if err != nil {
+			return nil, errors.Wrap(err, "could not open file")
+		}
+	} else {
+		hostname := os.Getenv("solarwinds_hostname")
+		username := os.Getenv("solarwinds_username")
+		password := os.Getenv("solarwinds_password")
 
-	res, err := client.Query(query, nil)
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to query")
+		if hostname == "" {
+			fmt.Fprintln(os.Stderr, "You must provide a hostname (env: solarwinds_hostname)")
+			os.Exit(1)
+		}
+
+		if username == "" {
+			fmt.Fprintln(os.Stderr, "You must provide a username (env: solarwinds_username)")
+			os.Exit(1)
+		}
+
+		if password == "" {
+			fmt.Fprintln(os.Stderr, "You must provide a password (env: solarwinds_password)")
+			os.Exit(1)
+		}
+
+		client := gosolar.NewClient(hostname, username, password, true)
+
+		query := `
+			SELECT DISTINCT
+				NCM_Nodes.NodeID
+				, NCM_Nodes.NodeCaption
+				, CacheResults.XMLResults
+			FROM Cirrus.Nodes AS NCM_Nodes
+			INNER JOIN Cirrus.ConfigArchive AS ConfigArchive ON NCM_Nodes.NodeID = ConfigArchive.NodeID
+			INNER JOIN Cirrus.PolicyCacheResults AS CacheResults ON ConfigArchive.ConfigID = CacheResults.ConfigID
+			INNER JOIN (
+				SELECT
+					ConfigArchive.NodeID
+					, MAX(ConfigArchive.DownloadTime) AS MostRecentDownload
+				FROM Cirrus.ConfigArchive AS ConfigArchive
+				WHERE ConfigArchive.ConfigType = 'Running'
+				GROUP BY ConfigArchive.NodeID
+			) tbl1 ON ConfigArchive.NodeID = tbl1.NodeID AND ConfigArchive.DownloadTime = tbl1.MostRecentDownload
+			WHERE NCM_Nodes.MachineType LIKE '%36xx%'
+			AND CacheResults.RuleID = '751cc709-e49c-40fe-9638-0af1627f0499'
+			AND CacheResults.IsViolation = 'True'
+		`
+
+		var err error
+		content, err = client.Query(query, nil)
+		if err != nil {
+			return nil, errors.Wrap(err, "failed to query")
+		}
 	}
 
 	// there are &#xD; (carriage returns) at the end of each of the interface
 	// names because they were pulled from the configuration that way
-	res = bytes.ReplaceAll(res, []byte("&#xD;"), []byte(""))
+	content = bytes.ReplaceAll(content, []byte("&#xD;"), []byte(""))
 
 	var complianceResults []*ComplianceResult
-	if err := json.Unmarshal(res, &complianceResults); err != nil {
+	if err := json.Unmarshal(content, &complianceResults); err != nil {
 		return nil, errors.Wrap(err, "failed to unmarshal")
 	}
 
 	return complianceResults, nil
 }
 
-func getViolations(client *gosolar.Client, complianceResults []*ComplianceResult) ([]*Violation, error) {
+func getViolations(complianceResults []*ComplianceResult) ([]*Violation, error) {
 	var violations []*Violation
 
 	type ComplianceDetail struct {
