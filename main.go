@@ -37,6 +37,7 @@ func main() {
 	// define the command-line options
 	pflag.BoolP("version", "v", false, "print version")
 	pflag.StringP("file", "f", "", "input JSON file")
+	pflag.StringP("rule", "r", "", "name of rule to target (default: all rules)")
 	pflag.Parse()
 
 	// bind the command-line options
@@ -129,11 +130,22 @@ func getComplianceResults() ([]*ComplianceResult, error) {
 				GROUP BY ConfigArchive.NodeID
 			) tbl1 ON ConfigArchive.NodeID = tbl1.NodeID AND ConfigArchive.DownloadTime = tbl1.MostRecentDownload
 			WHERE NCM_Nodes.MachineType LIKE '%36xx%'
-			AND CacheResults.RuleID = '751cc709-e49c-40fe-9638-0af1627f0499'
-			AND CacheResults.IsViolation = 'True'
+			AND CacheResults.IsViolation = 'True'	
 		`
 
 		var err error
+		if viper.GetString("rule") != "" {
+			query += " AND CacheResults.RuleName = @ruleName"
+
+			parameters := map[string]string{
+				"ruleName": viper.GetString("rule"),
+			}
+
+			content, err = client.Query(query, parameters)
+		} else {
+			content, err = client.Query(query, nil)
+		}
+
 		content, err = client.Query(query, nil)
 		if err != nil {
 			return nil, errors.Wrap(err, "failed to query")
