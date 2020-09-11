@@ -146,7 +146,6 @@ func getComplianceResults() ([]*ComplianceResult, error) {
 			content, err = client.Query(query, nil)
 		}
 
-		content, err = client.Query(query, nil)
 		if err != nil {
 			return nil, errors.Wrap(err, "failed to query")
 		}
