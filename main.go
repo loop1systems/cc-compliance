@@ -57,6 +57,21 @@ func main() {
 	username := os.Getenv("solarwinds_username")
 	password := os.Getenv("solarwinds_password")
 
+	if hostname == "" {
+		fmt.Fprintln(os.Stderr, "You must provide a hostname (env: solarwinds_hostname)")
+		os.Exit(1)
+	}
+
+	if username == "" {
+		fmt.Fprintln(os.Stderr, "You must provide a username (env: solarwinds_username)")
+		os.Exit(1)
+	}
+
+	if password == "" {
+		fmt.Fprintln(os.Stderr, "You must provide a password (env: solarwinds_password)")
+		os.Exit(1)
+	}
+
 	client := gosolar.NewClient(hostname, username, password, true)
 
 	if err := process(client); err != nil {
