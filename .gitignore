@@ -20,3 +20,6 @@ sample_*
 
 # Ignore logging path
 logs/
+
+# Ignore CSV output files
+*.csv
