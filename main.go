@@ -184,8 +184,8 @@ func writeViolations(violations []*Violation) error {
 
 	// write header row
 	csvWriter.Write([]string{
-		"NodeName",
-		"InterfaceName",
+		"Node Name",
+		"Interface Name",
 	})
 
 	for _, v := range violations {
