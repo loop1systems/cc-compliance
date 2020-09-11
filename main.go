@@ -53,7 +53,7 @@ func main() {
 		QuoteEmptyFields: true,
 	})
 
-	hostname := "engorion.loop1.com"
+	hostname := os.Getenv("solarwinds_hostname")
 	username := os.Getenv("solarwinds_username")
 	password := os.Getenv("solarwinds_password")
 
