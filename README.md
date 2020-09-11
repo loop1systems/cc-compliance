@@ -15,6 +15,7 @@ Name".
 
 ### Example
 
+```csv
 Node Name,Interface Name
 RouterA,GigabitEthernet 1/0/3
 RouterA,GigabitEthernet 1/0/4
@@ -22,6 +23,7 @@ RouterA,GigabitEthernet 1/0/5
 RouterB,GigabitEthernet 2/0/4
 RouterB,GigabitEthernet 2/0/5
 RouterB,GigabitEthernet 2/0/6
+```
 
 ## Enhancements
 
